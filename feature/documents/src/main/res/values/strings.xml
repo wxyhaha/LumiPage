@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="docs_app_title">LumiPage</string>
+    <string name="docs_search_hint">搜索文档标题…</string>
+    <string name="docs_all_documents">全部文档</string>
+    <string name="docs_favorites">已收藏</string>
+    <string name="docs_new_folder">新建文件夹</string>
+    <string name="docs_empty_title">还没有扫描文档</string>
+    <string name="docs_empty_desc">点击右下角扫描按钮拍摄纸质文档或从相册导入，即可自动矫正边缘并增强画质。</string>
+    <string name="docs_scan_cta">开始扫描</string>
+    <string name="docs_detail_add_page">追加页面</string>
+    <string name="docs_detail_export_pdf">导出 PDF</string>
+</resources>

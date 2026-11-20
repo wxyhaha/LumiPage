@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LumiPage</string>
+    <string name="app_tagline">高清文档扫描与本地管理</string>
+    <string name="cv_engine_ready">OpenCV 视觉引擎已就绪</string>
+    <string name="cv_engine_unavailable">OpenCV 视觉引擎初始化失败</string>
+</resources>

@@ -1,0 +1,24 @@
+# Gradle
+*.iml
+.gradle/
+build/
+**/build/
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.ipr
+*.iws
+captures/
+.navigation/
+output.json
+
+# Keystore & Secrets
+*.jks
+*.keystore
+
+# OS / Temp
+.DS_Store
+Thumbs.db
+*.log
+scratch/

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="scanner_title">文档扫描</string>
+    <string name="scanner_auto_capture_on">自动拍摄: 开</string>
+    <string name="scanner_auto_capture_off">自动拍摄: 手动</string>
+    <string name="scanner_batch_mode">连续多页</string>
+    <string name="scanner_single_mode">单页</string>
+    <string name="scanner_import_gallery">相册导入</string>
+    <string name="scanner_hold_steady">检测到文档，请保持稳定…</string>
+    <string name="scanner_align_hint">将文档放入取景框内</string>
+    <string name="scanner_permission_title">需要相机权限</string>
+    <string name="scanner_permission_desc">LumiPage 需要使用相机实时识别文档边缘并拍摄高清扫描件。您也可以直接从相册导入图片。</string>
+    <string name="scanner_grant_permission">授予相机权限</string>
+    <string name="scanner_open_settings">前往系统设置</string>
+    <string name="crop_title">调整裁剪区域</string>
+    <string name="crop_auto_detect">自动识别</string>
+    <string name="crop_full_image">全图</string>
+    <string name="crop_rotate">旋转 90°</string>
+    <string name="crop_confirm">下一步</string>
+    <string name="crop_retake">删除此页</string>
+</resources>

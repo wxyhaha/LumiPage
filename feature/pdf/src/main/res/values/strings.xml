@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pdf_export_title">PDF 预览与导出</string>
+    <string name="pdf_tools_title">PDF 工具箱</string>
+    <string name="pdf_save_downloads">保存到下载目录</string>
+    <string name="pdf_share">系统分享</string>
+</resources>

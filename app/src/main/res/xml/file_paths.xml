@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <files-path name="lumipage_exports" path="lumipage/exports/" />
+    <files-path name="lumipage_processed" path="lumipage/processed/" />
+    <cache-path name="cache" path="." />
+</paths>
