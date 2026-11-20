@@ -8,6 +8,7 @@ import android.graphics.Matrix
 import android.net.Uri
 import android.provider.Settings
 import android.view.ViewGroup
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -99,6 +100,18 @@ fun ScannerRoute(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
+    val handleExitScanner = {
+        viewModel.discardAllDrafts()
+        onNavigateBack()
+    }
+
+    BackHandler {
+        when (uiState.step) {
+            ScanStep.CAMERA -> handleExitScanner()
+            ScanStep.CROP -> viewModel.backToCamera()
+        }
+    }
+
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 20),
     ) { uris ->
@@ -129,7 +142,7 @@ fun ScannerRoute(
                 uiState = uiState,
                 viewModel = viewModel,
                 snackbarHostState = snackbarHostState,
-                onNavigateBack = onNavigateBack,
+                onNavigateBack = handleExitScanner,
                 onOpenGallery = {
                     galleryLauncher.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),

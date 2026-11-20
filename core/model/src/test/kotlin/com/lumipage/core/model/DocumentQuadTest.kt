@@ -59,4 +59,23 @@ class DocumentQuadTest {
         assertEquals(0.5f, params.contrast, 1e-5f)
         assertEquals(0f, params.sharpness, 1e-5f)
     }
+
+    @Test
+    fun `rotate90Clockwise maps coordinates and cycles corners properly`() {
+        val quad = DocumentQuad(
+            topLeft = NormalizedPoint(0.1f, 0.2f),
+            topRight = NormalizedPoint(0.8f, 0.2f),
+            bottomRight = NormalizedPoint(0.8f, 0.9f),
+            bottomLeft = NormalizedPoint(0.1f, 0.9f),
+        )
+        val rotated = quad.rotate90Clockwise()
+        assertEquals(0.1f, rotated.topLeft.x, 1e-5f)
+        assertEquals(0.1f, rotated.topLeft.y, 1e-5f)
+        assertEquals(0.8f, rotated.topRight.x, 1e-5f)
+        assertEquals(0.1f, rotated.topRight.y, 1e-5f)
+        assertEquals(0.8f, rotated.bottomRight.x, 1e-5f)
+        assertEquals(0.8f, rotated.bottomRight.y, 1e-5f)
+        assertEquals(0.1f, rotated.bottomLeft.x, 1e-5f)
+        assertEquals(0.8f, rotated.bottomLeft.y, 1e-5f)
+    }
 }

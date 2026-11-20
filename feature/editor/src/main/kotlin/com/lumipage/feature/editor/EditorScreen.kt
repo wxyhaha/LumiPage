@@ -2,6 +2,7 @@ package com.lumipage.feature.editor
 
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -108,6 +109,14 @@ fun EditorRoute(
     }
 
     val activePage = uiState.activePage
+    BackHandler {
+        if (uiState.isRecropping) {
+            viewModel.cancelRecrop()
+        } else {
+            onNavigateBack()
+        }
+    }
+
     if (uiState.isRecropping && activePage != null) {
         RecropScreen(
             originalPath = activePage.originalPath,

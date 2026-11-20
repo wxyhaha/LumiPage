@@ -32,8 +32,12 @@ class PerspectiveCorrector {
         }
 
         return withMatScope {
-            val srcMat = newMat()
-            Utils.bitmapToMat(source, srcMat)
+            val rawMat = newMat()
+            Utils.bitmapToMat(source, rawMat)
+
+            // 先按页面旋转角度旋转原图，再按旋转后坐标空间的归一化 quad 进行透视裁剪，
+            // 确保与 CropScreen / RecropScreen 的视觉坐标系 100% 一致
+            val srcMat = rotateMat(rawMat, rotationDegrees)
 
             val w = srcMat.cols().toDouble()
             val h = srcMat.rows().toDouble()
@@ -72,13 +76,12 @@ class PerspectiveCorrector {
                 Core.BORDER_REPLICATE,
             )
 
-            val rotated = rotateMat(warped, rotationDegrees)
             val outBitmap = Bitmap.createBitmap(
-                rotated.cols(),
-                rotated.rows(),
+                warped.cols(),
+                warped.rows(),
                 Bitmap.Config.ARGB_8888,
             )
-            Utils.matToBitmap(rotated, outBitmap)
+            Utils.matToBitmap(warped, outBitmap)
             outBitmap
         }
     }

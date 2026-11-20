@@ -31,6 +31,26 @@ class FileStorageManager(
     val draftsDir = File(rootDir, "drafts").apply { mkdirs() }
     val exportsDir = File(rootDir, "exports").apply { mkdirs() }
 
+    init {
+        // 启动时清理上次未保存遗留的临时草稿文件
+        runCatching {
+            draftsDir.listFiles()?.forEach { file ->
+                if (file.isFile) file.delete()
+            }
+        }
+    }
+
+    fun deleteDraftFiles(paths: List<String>) {
+        paths.forEach { path ->
+            runCatching {
+                val file = File(path)
+                if (file.parentFile?.absolutePath == draftsDir.absolutePath) {
+                    file.delete()
+                }
+            }
+        }
+    }
+
     data class RenderedPageFiles(
         val originalPath: String,
         val processedPath: String,

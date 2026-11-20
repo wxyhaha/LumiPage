@@ -206,7 +206,34 @@ class ScannerViewModel(
 
     fun backToCamera() {
         stabilizer.reset()
-        _uiState.update { it.copy(step = ScanStep.CAMERA) }
+        _uiState.update { state ->
+            if (!state.isBatchMode) {
+                // 单页模式下从裁剪页返回相机即视为重拍，清理上一张未保存的临时草稿
+                state.draftPages.forEach { page ->
+                    runCatching { File(page.originalPath).delete() }
+                }
+                state.copy(
+                    step = ScanStep.CAMERA,
+                    previewQuad = null,
+                    draftPages = emptyList(),
+                    activeCropIndex = 0,
+                )
+            } else {
+                state.copy(
+                    step = ScanStep.CAMERA,
+                    previewQuad = null,
+                )
+            }
+        }
+    }
+
+    fun discardAllDrafts() {
+        stabilizer.reset()
+        val pages = _uiState.value.draftPages
+        pages.forEach { page ->
+            runCatching { File(page.originalPath).delete() }
+        }
+        _uiState.value = ScannerUiState()
     }
 
     fun selectCropPage(index: Int) {
@@ -244,7 +271,11 @@ class ScannerViewModel(
             val idx = state.activeCropIndex
             val page = state.draftPages.getOrNull(idx) ?: return@update state
             val updated = state.draftPages.toMutableList()
-            updated[idx] = page.copy(rotationDegrees = (page.rotationDegrees + 90) % 360)
+            updated[idx] = page.copy(
+                rotationDegrees = (page.rotationDegrees + 90) % 360,
+                quad = page.quad.rotate90Clockwise(),
+                autoDetectedQuad = page.autoDetectedQuad?.rotate90Clockwise(),
+            )
             state.copy(draftPages = updated)
         }
     }
@@ -253,9 +284,16 @@ class ScannerViewModel(
         _uiState.update { state ->
             val idx = state.activeCropIndex
             if (idx !in state.draftPages.indices) return@update state
+            val removed = state.draftPages[idx]
+            runCatching { File(removed.originalPath).delete() }
             val updated = state.draftPages.toMutableList().apply { removeAt(idx) }
             if (updated.isEmpty()) {
-                state.copy(draftPages = emptyList(), activeCropIndex = 0, step = ScanStep.CAMERA)
+                state.copy(
+                    draftPages = emptyList(),
+                    activeCropIndex = 0,
+                    step = ScanStep.CAMERA,
+                    previewQuad = null,
+                )
             } else {
                 state.copy(
                     draftPages = updated,

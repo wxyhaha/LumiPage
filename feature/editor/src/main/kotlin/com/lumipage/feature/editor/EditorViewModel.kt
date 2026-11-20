@@ -96,8 +96,14 @@ class EditorViewModel(
         val page = _uiState.value.activePage ?: return
         val idx = _uiState.value.activePageIndex
         val nextRotation = (page.editState.normalizedRotation + 90) % 360
+        val nextQuad = page.editState.quad.rotate90Clockwise()
         val updated = _uiState.value.pages.toMutableList()
-        updated[idx] = page.copy(editState = page.editState.copy(rotationDegrees = nextRotation))
+        updated[idx] = page.copy(
+            editState = page.editState.copy(
+                rotationDegrees = nextRotation,
+                quad = nextQuad,
+            ),
+        )
         _uiState.update { it.copy(pages = updated) }
         loadActivePagePreview()
     }

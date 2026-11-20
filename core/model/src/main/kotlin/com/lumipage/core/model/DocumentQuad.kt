@@ -69,6 +69,23 @@ data class DocumentQuad(
     }
 
     /**
+     * 当图像顺时针旋转 90° 时，将归一化四顶点同步顺时针旋转 90°：
+     * (x, y) -> (1 - y, x)，且新的左上角对应原来的左下角。
+     */
+    fun rotate90Clockwise(): DocumentQuad {
+        fun rot(p: NormalizedPoint) = NormalizedPoint(
+            x = (1f - p.y).coerceIn(0f, 1f),
+            y = p.x.coerceIn(0f, 1f),
+        )
+        return DocumentQuad(
+            topLeft = rot(bottomLeft),
+            topRight = rot(topLeft),
+            bottomRight = rot(topRight),
+            bottomLeft = rot(bottomRight),
+        )
+    }
+
+    /**
      * 按给定权重向目标四边形做线性插值，用于实时预览框平滑。
      */
     fun lerpTo(target: DocumentQuad, alpha: Float): DocumentQuad {

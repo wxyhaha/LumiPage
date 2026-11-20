@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### 2026-11-20 — 修复扫描草稿状态残留、返回手势与旋转裁剪坐标同步问题
+- **修复退出扫描再进入仍显示上一张未保存图片的 Bug**：
+  - 根因：`MainActivity` 原本将所有 `viewModel(key = ...)` 挂载在同一个 Activity 级 `ViewModelStore` 下且 `key` 仅依赖 `backStack.size`；退出扫描再进入时 `key` 相同导致直接复用上一次未销毁的 `ScannerViewModel` 实例。
+  - 修复：在 [MainActivity.kt](file:///d:/studyPlace/LumiPage/app/src/main/kotlin/com/lumipage/MainActivity.kt) 中为每个导航栈节点分配唯一 `sessionId` 与独立 `ViewModelStoreOwner`，出栈 (`popBack`) 或切换页面时立即调用 `ViewModelStore.clear()` 彻底销毁旧实例。
+- **修复单页模式返回重拍导致多张图片混杂的 Bug**：
+  - 在 [ScannerViewModel.kt](file:///d:/studyPlace/LumiPage/feature/scanner/src/main/kotlin/com/lumipage/feature/scanner/ScannerViewModel.kt) 中，单页模式（`!isBatchMode`）下从裁剪页返回相机时自动清空并删除当前未确认的临时草稿文件；退出扫描或从 `EditorNewScan` 返回时自动清理未保存的 `drafts/` 临时文件。
+- **修复系统返回手势（`BackHandler`）缺失导致的返回混乱**：
+  - 在 `MainActivity`、`ScannerRoute`（裁剪页返回相机、相机返回首页）、`EditorRoute`（重裁返回编辑页）统一接入 `BackHandler`。
+- **修复旋转 90° 与裁剪四顶点坐标空间不一致的 Bug**：
+  - 在 [DocumentQuad.kt](file:///d:/studyPlace/LumiPage/core/model/src/main/kotlin/com/lumipage/core/model/DocumentQuad.kt) 新增 `rotate90Clockwise()`，旋转页面时同步旋转 `quad` 坐标，并将 [PerspectiveCorrector.kt](file:///d:/studyPlace/LumiPage/core/imaging/src/main/kotlin/com/lumipage/core/imaging/PerspectiveCorrector.kt) 统一为先旋转原图再按 `quad` 透视裁剪，确保与裁剪页/重裁页视觉坐标系完全一致。
+
 ### 2026-11-20 — 全面支持 Android 16 KB 页面对齐
 - 将 `org.opencv:opencv` 升级至 `4.14.0`、`androidx.camera:*` 升级至 `1.5.0`，消除 Android 17 真机启动时的 16 KB ELF 未对齐兼容性警告。
 - 校验 APK 内全部 7 个 `arm64-v8a` `.so`（含 `libopencv_java4.so`, `libc++_shared.so`, `libsurface_util_jni.so`, `libimage_processing_util_jni.so`, `libonnxruntime.so`, `libonnxruntime4j_jni.so`, `libandroidx.graphics.path.so`）的 `PT_LOAD` 对齐均为 `16384`。
