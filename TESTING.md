@@ -47,6 +47,9 @@
 | 2026-11-20 | Phase 6 | DocAligner `FastViT-T8` vs `FastViT-SA24` ONNX 模型评测 | `FastViT-SA24` 全面胜出 | `SA24` 在翻开书本 `real_2` 样本上 4 角点峰值达 `[0.767, 0.845, 0.789, 0.413]` 并精准锁定右页书；`dark_wood`/`light_desk` 达 `0.90+`（PC CPU ~45ms） |
 | 2026-11-20 | Phase 6 | 16 KB ELF 页面对齐校验（OpenCV 4.14.0 + CameraX 1.5.0） | 通过（7/7 `.so` = `16384`） | APK 内全部 `arm64-v8a` 原生库均为 16 KB 对齐且 `compress=0` |
 | 2026-11-21 | Phase 6 | FairScan LiteRT 分割模型 + 凸包 Huber 直线拟合验证 | 通过（4/4 样本全精准贴合） | 在翻开左/右页书本+手指压角 (`real_1`, `real_2`) 与桌面样本 (`dark_wood`, `light_desk`) 上均精准穿透手指还原真实书角 |
+| 2026-11-21 | Phase 6 | 新版图像增强对比验证（`real_1`, `real_2`, `contract_stamp`） | 通过（效果质变） | 彻底消除米黄纸偏色与背面透字，黑字扎实锐利；印章/荧光笔/蓝笔 100% 保留色彩；Sauvola 黑白零黑斑 |
+| 2026-11-21 | Phase 6 | `PP-LCNet_x1_0_doc_ori` TFLite 转换与 4 向朝向测试 + `±6°` 精细纠偏与外缘清理验证 | 通过（12/12 = 100%，精细纠偏误差 `<0.1°`） | `doc_ori.tflite`（6.44 MB）在 `real_1`/`real_2`/`dark_wood` 的 0/90/180/270° 旋转上 12/12 准确；`-3.5°` 注入倾斜还原为 `+3.50°` 摆正且左/底暗边清理干净 |
+| 2026-11-21 | Phase 6 | `.\gradlew.bat :core:model:test testDebugUnitTest :app:assembleDebug --no-daemon` | 通过（227 tasks） | 包含 `PageDeskewer` 投影方差单测与 `TextOrientationDetector.OrientationResult` 单测；当前沙箱环境 `adb` 守护进程端口受限未能推送安装到真机 |
 
 ---
 

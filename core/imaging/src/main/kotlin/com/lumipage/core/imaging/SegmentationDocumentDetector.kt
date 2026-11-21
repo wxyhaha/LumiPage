@@ -239,9 +239,13 @@ class SegmentationDocumentDetector(
                         val sy = (by + ny * d).roundToInt()
                         if (sx in 2 until (w - 2) && sy in 2 until (h - 2)) {
                             val idx = sy * w + sx
-                            val dirGrad = abs(gxData[idx] * nx + gyData[idx] * ny)
-                            val weight = 1.0 - 0.35 * (abs(d).toDouble() / searchRadius.toDouble())
-                            val score = dirGrad * weight
+                            val rawSigned = gxData[idx] * nx + gyData[idx] * ny
+                            val dirGrad = abs(rawSigned)
+                            val distWeight = 1.0 - 0.35 * (abs(d).toDouble() / searchRadius.toDouble())
+                            // (nx, ny) 指向纸张内部：优先吸附内侧亮纸面边缘，避免将桌面暗边或书页厚度阴影拉入裁剪框
+                            val inwardWeight = if (d < 0) 0.78 else 1.0
+                            val polarityWeight = if (rawSigned >= 0f) 1.15 else 0.85
+                            val score = dirGrad * distWeight * inwardWeight * polarityWeight
                             if (score > bestScore) {
                                 bestScore = score
                                 bestX = sx.toDouble()

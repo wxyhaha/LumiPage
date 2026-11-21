@@ -332,7 +332,7 @@ class ScannerViewModel(
         } ?: return null
 
         val detectedQuad = try {
-            imagingEngine.detectDocument(detectionBitmap).quad
+            imagingEngine.detectDocument(detectionBitmap, resetTemporal = true).quad
         } finally {
             detectionBitmap.recycle()
         }

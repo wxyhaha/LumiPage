@@ -223,6 +223,7 @@ private fun LumiPageAppRoot(container: com.lumipage.di.AppContainer) {
                             initialPages = inputs,
                             imagingEngine = container.imagingEngine,
                             dispatchers = container.dispatchers,
+                            autoOrientOnStart = true,
                         ),
                     )
                     EditorRoute(

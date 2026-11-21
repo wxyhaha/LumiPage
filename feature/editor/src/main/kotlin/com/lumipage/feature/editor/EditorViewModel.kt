@@ -28,6 +28,7 @@ class EditorViewModel(
     private val initialPages: List<EditablePageInput>,
     private val imagingEngine: ImagingEngine,
     private val dispatchers: DispatcherProvider,
+    private val autoOrientOnStart: Boolean = false,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(EditorUiState(pages = initialPages))
@@ -38,6 +39,7 @@ class EditorViewModel(
 
     private var warpJob: Job? = null
     private var enhanceJob: Job? = null
+    private val manuallyRotatedIds = mutableSetOf<String>()
     private val warpedCache = mutableMapOf<String, CacheEntry>()
 
     private data class CacheEntry(
@@ -52,7 +54,11 @@ class EditorViewModel(
 
     init {
         if (initialPages.isNotEmpty()) {
-            loadActivePagePreview()
+            if (autoOrientOnStart) {
+                autoOrientAndLoadInitialPages()
+            } else {
+                loadActivePagePreview()
+            }
         }
     }
 
@@ -94,6 +100,7 @@ class EditorViewModel(
 
     fun rotateActivePage90() {
         val page = _uiState.value.activePage ?: return
+        manuallyRotatedIds.add(page.id)
         val idx = _uiState.value.activePageIndex
         val nextRotation = (page.editState.normalizedRotation + 90) % 360
         val nextQuad = page.editState.quad.rotate90Clockwise()
@@ -162,6 +169,61 @@ class EditorViewModel(
         updated[idx] = page.copy(editState = page.editState.copy(enhancement = nextEnhancement))
         _uiState.update { it.copy(pages = updated) }
         scheduleEnhancePreview()
+    }
+
+    private fun autoOrientAndLoadInitialPages() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingPreview = true, errorMessage = null) }
+            val firstPage = _uiState.value.pages.firstOrNull()
+            if (firstPage != null && firstPage.id !in manuallyRotatedIds) {
+                applyAutoOrientationToPage(firstPage.id)
+            }
+            loadActivePagePreview()
+
+            val remainingIds = _uiState.value.pages.drop(1).map { it.id }
+            for (pageId in remainingIds) {
+                if (pageId !in manuallyRotatedIds) {
+                    applyAutoOrientationToPage(pageId)
+                    if (_uiState.value.activePage?.id == pageId) {
+                        loadActivePagePreview()
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun applyAutoOrientationToPage(pageId: String) {
+        val page = _uiState.value.pages.firstOrNull { it.id == pageId } ?: return
+        val original = withContext(dispatchers.io) {
+            BitmapLoader.decodeSampledBitmap(page.originalPath, maxDimension = 1200)
+        } ?: return
+        val steps = try {
+            imagingEngine.detectAutoRotationSteps(
+                source = original,
+                quad = page.editState.quad,
+                currentRotationDegrees = page.editState.normalizedRotation,
+            )
+        } finally {
+            original.recycle()
+        }
+        if (steps == 0 || pageId in manuallyRotatedIds) return
+
+        _uiState.update { state ->
+            val idx = state.pages.indexOfFirst { it.id == pageId }
+            if (idx < 0) return@update state
+            val target = state.pages[idx]
+            var nextQuad = target.editState.quad
+            repeat(steps) { nextQuad = nextQuad.rotate90Clockwise() }
+            val nextRotation = (target.editState.normalizedRotation + steps * 90) % 360
+            val updated = state.pages.toMutableList()
+            updated[idx] = target.copy(
+                editState = target.editState.copy(
+                    quad = nextQuad,
+                    rotationDegrees = nextRotation,
+                ),
+            )
+            state.copy(pages = updated)
+        }
     }
 
     private fun loadActivePagePreview() {
@@ -273,10 +335,16 @@ class EditorViewModel(
         private val initialPages: List<EditablePageInput>,
         private val imagingEngine: ImagingEngine,
         private val dispatchers: DispatcherProvider,
+        private val autoOrientOnStart: Boolean = false,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return EditorViewModel(initialPages, imagingEngine, dispatchers) as T
+            return EditorViewModel(
+                initialPages = initialPages,
+                imagingEngine = imagingEngine,
+                dispatchers = dispatchers,
+                autoOrientOnStart = autoOrientOnStart,
+            ) as T
         }
     }
 }

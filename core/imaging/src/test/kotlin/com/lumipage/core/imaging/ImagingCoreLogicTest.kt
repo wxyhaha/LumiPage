@@ -112,4 +112,38 @@ class ImagingCoreLogicTest {
         assertEquals(2000, w)
         assertEquals(4000, h)
     }
+
+    @Test
+    fun `projection variance peaks for aligned text rows over uniform distribution`() {
+        val uniform = floatArrayOf(10f, 10f, 10f, 10f, 10f, 10f)
+        val alignedTextRows = floatArrayOf(0f, 20f, 0f, 20f, 0f, 20f)
+        assertEquals(0.0, PageDeskewer.computeProjectionVariance(uniform), 1e-6)
+        assertTrue(
+            PageDeskewer.computeProjectionVariance(alignedTextRows) >
+                PageDeskewer.computeProjectionVariance(uniform),
+        )
+    }
+
+    @Test
+    fun `orientation result converts clockwise steps to degrees`() {
+        assertEquals(0, TextOrientationDetector.OrientationResult(0, 0.9f).clockwiseCorrectionDegrees)
+        assertEquals(90, TextOrientationDetector.OrientationResult(1, 0.9f).clockwiseCorrectionDegrees)
+        assertEquals(180, TextOrientationDetector.OrientationResult(2, 0.9f).clockwiseCorrectionDegrees)
+        assertEquals(270, TextOrientationDetector.OrientationResult(3, 0.9f).clockwiseCorrectionDegrees)
+    }
+
+    @Test
+    fun `perspective target size recovers true height on foreshortened trapezoid`() {
+        val (w, h) = PerspectiveCorrector.calculateTargetSize(
+            tl = Point(0.28 * 3072, 0.21 * 4096),
+            tr = Point(0.77 * 3072, 0.23 * 4096),
+            br = Point(0.75 * 3072, 0.81 * 4096),
+            bl = Point(0.07 * 3072, 0.75 * 4096),
+            maxOutputDimension = 4096,
+            imageWidth = 3072.0,
+            imageHeight = 4096.0,
+        )
+        val ratio = h.toDouble() / w.toDouble()
+        assertTrue("Expected recovered H/W > 1.35, got $ratio", ratio > 1.35 && ratio < 1.65)
+    }
 }

@@ -7,17 +7,22 @@ import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.MatOfFloat
+import org.opencv.core.MatOfInt
 import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 /**
- * 非破坏性文档图像增强处理器：
- * 支持原图、自动增强（去阴影/背景净化）、彩色文档、灰度增强、黑白二值化，
- * 以及亮度、对比度、锐化参数调节。
+ * 商业级非破坏性文档图像增强处理器：
+ * 1. 自动增强：光照场去阴影 + 软前景/背景分离去透字 + 非线性 S 曲线压黑 + 选择性色彩保护（印章/批注）
+ * 2. 彩色文档：柔和去阴影 + 背景漂白 + 丰富色彩还原
+ * 3. 灰度增强：干净均匀的激光打印级灰度
+ * 4. 黑白文档：基于局部均值与标准差的高速 Sauvola 自适应二值化（空白纯白零噪点）
  */
 class ImageEnhancer {
 
@@ -42,7 +47,7 @@ class ImageEnhancer {
                 EnhancementFilter.AUTO_ENHANCE -> applyAutoEnhance(bgr)
                 EnhancementFilter.DOCUMENT_COLOR -> applyDocumentColor(bgr)
                 EnhancementFilter.GRAYSCALE -> applyGrayscaleEnhance(bgr)
-                EnhancementFilter.BLACK_AND_WHITE -> applyBlackAndWhite(bgr)
+                EnhancementFilter.BLACK_AND_WHITE -> applySauvolaBlackAndWhite(bgr)
             }
 
             val adjusted = applyToneAndSharpness(baseEnhanced, safeParams)
@@ -56,10 +61,10 @@ class ImageEnhancer {
     }
 
     /**
-     * 自动增强：
-     * 1. 通过降采样大核形态学闭运算估计背景光照场，消除阴影与光照不均
-     * 2. 背景漂白 + 自适应对比度拉伸
-     * 3. 保留原始 Cr/Cb 色彩（印章/批注/高亮）
+     * 自动增强（智能高清扫描）：
+     * - 降采样大核闭运算估计背景光照场，消除书脊与手指阴影
+     * - 非线性 S 曲线压黑文字并积极漂白纸张底色、抑制背面透字
+     * - HSV 饱和度掩膜选择性色彩保护（低饱和背景去黄漂白，保留红章/蓝字/荧光笔）
      */
     private fun MatScope.applyAutoEnhance(bgr: Mat): Mat {
         val ycrcb = newMat()
@@ -67,20 +72,71 @@ class ImageEnhancer {
         val channels = List(3) { newMat() }
         Core.split(ycrcb, channels)
 
-        val y = channels[0]
-        val normalizedY = removeShadowFromLuminance(y)
-        val stretchedY = stretchDocumentContrast(normalizedY, blackPercentile = 0.02, whitePercentile = 0.90)
+        val yNorm = removeShadowFromLuminance(channels[0])
+        val yClean = enhanceDocumentLuminance(yNorm, whitePercentile = 0.82)
+
+        // 计算 HSV 饱和度作为彩色保护权重
+        val hsv = newMat()
+        Imgproc.cvtColor(bgr, hsv, Imgproc.COLOR_BGR2HSV)
+        val hsvChannels = List(3) { newMat() }
+        Core.split(hsv, hsvChannels)
+
+        val w = bgr.cols()
+        val h = bgr.rows()
+        val total = w * h
+
+        val satBytes = ByteArray(total)
+        hsvChannels[1].get(0, 0, satBytes)
+        val yCleanBytes = ByteArray(total)
+        yClean.get(0, 0, yCleanBytes)
+        val yNormBytes = ByteArray(total)
+        yNorm.get(0, 0, yNormBytes)
+        val crBytes = ByteArray(total)
+        channels[1].get(0, 0, crBytes)
+        val cbBytes = ByteArray(total)
+        channels[2].get(0, 0, cbBytes)
+
+        val outY = ByteArray(total)
+        val outCr = ByteArray(total)
+        val outCb = ByteArray(total)
+
+        for (i in 0 until total) {
+            val sat = satBytes[i].toInt() and 0xFF
+            // 饱和度 > 36 逐步判定为印章/荧光笔/彩色图文，低饱和纸张去黄漂白
+            val colorWeight = ((sat - 36f) / 48f).coerceIn(0f, 1f)
+
+            val yc = yCleanBytes[i].toInt() and 0xFF
+            val yn = yNormBytes[i].toInt() and 0xFF
+            val yFinal = (yc * (1f - 0.18f * colorWeight) + yn * (0.18f * colorWeight)).roundToInt().coerceIn(0, 255)
+            outY[i] = yFinal.toByte()
+
+            val crOrig = crBytes[i].toInt() and 0xFF
+            val cbOrig = cbBytes[i].toInt() and 0xFF
+            val crVal = (128f + (crOrig - 128f) * colorWeight * 1.15f).roundToInt().coerceIn(0, 255)
+            val cbVal = (128f + (cbOrig - 128f) * colorWeight * 1.15f).roundToInt().coerceIn(0, 255)
+            outCr[i] = crVal.toByte()
+            outCb[i] = cbVal.toByte()
+        }
+
+        val yOutMat = track(Mat(h, w, CvType.CV_8UC1)).apply { put(0, 0, outY) }
+        val crOutMat = track(Mat(h, w, CvType.CV_8UC1)).apply { put(0, 0, outCr) }
+        val cbOutMat = track(Mat(h, w, CvType.CV_8UC1)).apply { put(0, 0, outCb) }
 
         val merged = newMat()
-        Core.merge(listOf(stretchedY, channels[1], channels[2]), merged)
-        val result = newMat()
-        Imgproc.cvtColor(merged, result, Imgproc.COLOR_YCrCb2BGR)
-        return result
+        Core.merge(listOf(yOutMat, crOutMat, cbOutMat), merged)
+        val bgrClean = newMat()
+        Imgproc.cvtColor(merged, bgrClean, Imgproc.COLOR_YCrCb2BGR)
+
+        // 轻度边缘锐化提升印刷感
+        val blurred = newMat()
+        Imgproc.GaussianBlur(bgrClean, blurred, Size(0.0, 0.0), 1.1)
+        val sharp = newMat()
+        Core.addWeighted(bgrClean, 1.24, blurred, -0.24, 0.0, sharp)
+        return sharp
     }
 
     /**
-     * 彩色文档：
-     * 柔和去阴影并保留更丰富的彩色饱和度与纸张白度。
+     * 彩色文档：柔和去阴影并保留自然层次与彩色图文饱和度。
      */
     private fun MatScope.applyDocumentColor(bgr: Mat): Mat {
         val ycrcb = newMat()
@@ -89,12 +145,10 @@ class ImageEnhancer {
         Core.split(ycrcb, channels)
 
         val normalizedY = removeShadowFromLuminance(channels[0])
-        // 与原图亮度按 75%/25% 混合，保留自然层次
         val blendedY = newMat()
-        Core.addWeighted(normalizedY, 0.75, channels[0], 0.25, 0.0, blendedY)
-        val stretchedY = stretchDocumentContrast(blendedY, blackPercentile = 0.015, whitePercentile = 0.92)
+        Core.addWeighted(normalizedY, 0.80, channels[0], 0.20, 0.0, blendedY)
+        val stretchedY = stretchDocumentContrast(blendedY, blackPercentile = 0.015, whitePercentile = 0.90)
 
-        // 适度增强色彩通道对比度（以 128 为中性点）
         val crBoost = boostChroma(channels[1], 1.18)
         val cbBoost = boostChroma(channels[2], 1.18)
 
@@ -106,51 +160,113 @@ class ImageEnhancer {
     }
 
     /**
-     * 灰度增强：光照归一化 + 对比度拉伸。
+     * 灰度增强：去阴影 + 去透字 + S 曲线压黑。
      */
     private fun MatScope.applyGrayscaleEnhance(bgr: Mat): Mat {
         val gray = newMat()
         Imgproc.cvtColor(bgr, gray, Imgproc.COLOR_BGR2GRAY)
         val normalized = removeShadowFromLuminance(gray)
-        val stretched = stretchDocumentContrast(normalized, blackPercentile = 0.02, whitePercentile = 0.88)
+        val clean = enhanceDocumentLuminance(normalized, whitePercentile = 0.84)
         val outBgr = newMat()
-        Imgproc.cvtColor(stretched, outBgr, Imgproc.COLOR_GRAY2BGR)
+        Imgproc.cvtColor(clean, outBgr, Imgproc.COLOR_GRAY2BGR)
         return outBgr
     }
 
     /**
-     * 黑白文档：
-     * 光照归一化 + 轻度去噪 + 局部自适应阈值二值化，保留锐利文字同时消除背景灰斑。
+     * Sauvola 自适应二值化（黑白打印模式）：
+     * T(x, y) = m(x, y) * (1 + k * (s(x, y) / 128 - 1))
+     * 通过 boxFilter 计算局部均值 m 与局部标准差 s，空白纸张零黑斑、文字笔画极锐利。
      */
-    private fun MatScope.applyBlackAndWhite(bgr: Mat): Mat {
+    private fun MatScope.applySauvolaBlackAndWhite(bgr: Mat): Mat {
         val gray = newMat()
         Imgproc.cvtColor(bgr, gray, Imgproc.COLOR_BGR2GRAY)
         val normalized = removeShadowFromLuminance(gray)
 
-        val denoised = newMat()
-        Imgproc.GaussianBlur(normalized, denoised, Size(3.0, 3.0), 0.0)
+        val w = normalized.cols()
+        val h = normalized.rows()
+        val winSize = makeOdd((min(w, h) / 36).coerceIn(19, 41)).toDouble()
+        val kSize = Size(winSize, winSize)
 
-        val blockSize = makeOdd((min(bgr.cols(), bgr.rows()) / 28).coerceIn(15, 45))
-        val binary = newMat()
-        Imgproc.adaptiveThreshold(
-            denoised,
-            binary,
-            255.0,
-            Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C,
-            Imgproc.THRESH_BINARY,
-            blockSize,
-            11.0,
-        )
+        val grayFloat = newMat()
+        normalized.convertTo(grayFloat, CvType.CV_32F)
+        val sqFloat = newMat()
+        Core.multiply(grayFloat, grayFloat, sqFloat)
 
+        val mean = newMat()
+        val sqMean = newMat()
+        Imgproc.boxFilter(grayFloat, mean, CvType.CV_32F, kSize)
+        Imgproc.boxFilter(sqFloat, sqMean, CvType.CV_32F, kSize)
+
+        val total = w * h
+        val grayArr = FloatArray(total)
+        val meanArr = FloatArray(total)
+        val sqMeanArr = FloatArray(total)
+        grayFloat.get(0, 0, grayArr)
+        mean.get(0, 0, meanArr)
+        sqMean.get(0, 0, sqMeanArr)
+
+        val outBytes = ByteArray(total)
+        val sauvolaK = 0.20f
+        val invR = 1f / 128f
+        for (i in 0 until total) {
+            val m = meanArr[i]
+            val variance = max(0f, sqMeanArr[i] - m * m)
+            val std = kotlin.math.sqrt(variance)
+            val thresh = m * (1f + sauvolaK * (std * invR - 1f))
+            outBytes[i] = if (grayArr[i] > thresh) 255.toByte() else 0
+        }
+
+        val binary = track(Mat(h, w, CvType.CV_8UC1)).apply { put(0, 0, outBytes) }
         val outBgr = newMat()
         Imgproc.cvtColor(binary, outBgr, Imgproc.COLOR_GRAY2BGR)
         return outBgr
     }
 
     /**
-     * 通过降采样大核形态学闭运算估计背景光照场，并执行除法归一化：
-     * out = clamp(src / background * 255)
+     * 基于局部背景差分与非线性 S 曲线优化亮度通道：压黑文字、漂白纸底、抑制背面透字。
      */
+    private fun MatScope.enhanceDocumentLuminance(
+        yNorm: Mat,
+        whitePercentile: Double,
+    ): Mat {
+        val w = yNorm.cols()
+        val h = yNorm.rows()
+        val total = w * h
+
+        val bgLocal = newMat()
+        Imgproc.GaussianBlur(yNorm, bgLocal, Size(0.0, 0.0), 18.0)
+
+        val (lowVal, highVal) = computePercentileBounds(yNorm, blackPercentile = 0.015, whitePercentile = whitePercentile)
+        val span = max(40f, (highVal - lowVal).toFloat())
+
+        val yBytes = ByteArray(total)
+        val bgBytes = ByteArray(total)
+        yNorm.get(0, 0, yBytes)
+        bgLocal.get(0, 0, bgBytes)
+
+        val outBytes = ByteArray(total)
+        for (i in 0 until total) {
+            val yv = (yBytes[i].toInt() and 0xFF).toFloat()
+            val bgv = (bgBytes[i].toInt() and 0xFF).toFloat()
+            val diff = bgv - yv
+
+            val stretched = ((yv - lowVal) / span).coerceIn(0f, 1f)
+            val curved = if (stretched < 0.72f) {
+                (stretched / 0.72f).pow(1.38f) * 0.72f
+            } else {
+                1f - ((1f - stretched) / 0.28f).pow(1.8f) * 0.28f
+            }
+
+            // 局部差值极小且偏亮区域判定为纸张背景或背面透字，平滑推向纯白
+            val bgSuppress = ((14f - diff) / 14f).coerceIn(0f, 1f) *
+                ((stretched - 0.62f) / 0.38f).coerceIn(0f, 1f)
+            val finalNorm = curved * (1f - 0.85f * bgSuppress) + 0.85f * bgSuppress
+            outBytes[i] = (finalNorm * 255f).roundToInt().coerceIn(0, 255).toByte()
+        }
+
+        return track(Mat(h, w, CvType.CV_8UC1)).apply { put(0, 0, outBytes) }
+    }
+
     private fun MatScope.removeShadowFromLuminance(luma: Mat): Mat {
         val w = luma.cols()
         val h = luma.rows()
@@ -199,19 +315,16 @@ class ImageEnhancer {
         return out
     }
 
-    /**
-     * 基于亮度直方图分位数的文档对比度拉伸，使纸张背景更洁白、文字更扎实。
-     */
-    private fun MatScope.stretchDocumentContrast(
+    private fun MatScope.computePercentileBounds(
         luma: Mat,
         blackPercentile: Double,
         whitePercentile: Double,
-    ): Mat {
+    ): Pair<Int, Int> {
         val hist = newMat()
-        val channels = org.opencv.core.MatOfInt(0)
-        val histSize = org.opencv.core.MatOfInt(256)
-        val ranges = org.opencv.core.MatOfFloat(0f, 256f)
-        try {
+        val channels = MatOfInt(0)
+        val histSize = MatOfInt(256)
+        val ranges = MatOfFloat(0f, 256f)
+        return try {
             Imgproc.calcHist(listOf(luma), channels, Mat(), hist, histSize, ranges)
             val totalPixels = (luma.rows() * luma.cols()).toDouble()
             val blackTarget = totalPixels * blackPercentile
@@ -232,19 +345,26 @@ class ImageEnhancer {
                     break
                 }
             }
-
-            if (highVal <= lowVal + 16) return luma
-            val alpha = 255.0 / (highVal - lowVal).toDouble()
-            val beta = -lowVal * alpha
-
-            val out = newMat()
-            luma.convertTo(out, CvType.CV_8U, alpha, beta)
-            return out
+            lowVal to highVal
         } finally {
             channels.release()
             histSize.release()
             ranges.release()
         }
+    }
+
+    private fun MatScope.stretchDocumentContrast(
+        luma: Mat,
+        blackPercentile: Double,
+        whitePercentile: Double,
+    ): Mat {
+        val (lowVal, highVal) = computePercentileBounds(luma, blackPercentile, whitePercentile)
+        if (highVal <= lowVal + 16) return luma
+        val alpha = 255.0 / (highVal - lowVal).toDouble()
+        val beta = -lowVal * alpha
+        val out = newMat()
+        luma.convertTo(out, CvType.CV_8U, alpha, beta)
+        return out
     }
 
     private fun MatScope.boostChroma(channel: Mat, factor: Double): Mat {
@@ -264,7 +384,6 @@ class ImageEnhancer {
     ): Mat {
         var current = bgr
 
-        // 亮度与对比度调节
         if (params.brightness != 0f || params.contrast != 1f) {
             val alpha = params.contrast.toDouble()
             val beta = params.brightness * 60.0 + (1.0 - alpha) * 128.0
@@ -273,7 +392,6 @@ class ImageEnhancer {
             current = toned
         }
 
-        // 非锐化掩蔽 (Unsharp Mask)
         if (params.sharpness > 0.02f) {
             val blurred = newMat()
             Imgproc.GaussianBlur(current, blurred, Size(0.0, 0.0), 1.4)

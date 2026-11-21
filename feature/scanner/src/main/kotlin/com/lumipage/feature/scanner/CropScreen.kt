@@ -56,6 +56,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -74,11 +75,15 @@ import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-private enum class DragCorner {
+private enum class DragHandle {
     TOP_LEFT,
     TOP_RIGHT,
     BOTTOM_RIGHT,
     BOTTOM_LEFT,
+    EDGE_TOP,
+    EDGE_RIGHT,
+    EDGE_BOTTOM,
+    EDGE_LEFT,
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -119,7 +124,7 @@ fun CropScreen(
         }
     }
 
-    var draggingCorner by remember(activePage.id) { mutableStateOf<DragCorner?>(null) }
+    var draggingHandle by remember(activePage.id) { mutableStateOf<DragHandle?>(null) }
 
     Scaffold(
         containerColor = Color(0xFF0F172A),
@@ -248,21 +253,37 @@ fun CropScreen(
                         quad = activePage.quad,
                         renderWidth = renderW,
                         renderHeight = renderH,
-                        draggingCorner = draggingCorner,
-                        onDragStart = { draggingCorner = it },
-                        onDragEnd = { draggingCorner = null },
+                        draggingHandle = draggingHandle,
+                        onDragStart = { draggingHandle = it },
+                        onDragEnd = { draggingHandle = null },
                         onQuadChange = onQuadChange,
                     )
                 }
 
                 // 拖拽角点时在顶部角落展示局部放大镜 (Loupe)
-                val activeCorner = draggingCorner
-                if (activeCorner != null) {
-                    val normPt = when (activeCorner) {
-                        DragCorner.TOP_LEFT -> activePage.quad.topLeft
-                        DragCorner.TOP_RIGHT -> activePage.quad.topRight
-                        DragCorner.BOTTOM_RIGHT -> activePage.quad.bottomRight
-                        DragCorner.BOTTOM_LEFT -> activePage.quad.bottomLeft
+                val activeHandle = draggingHandle
+                if (activeHandle != null) {
+                    val normPt = when (activeHandle) {
+                        DragHandle.TOP_LEFT -> activePage.quad.topLeft
+                        DragHandle.TOP_RIGHT -> activePage.quad.topRight
+                        DragHandle.BOTTOM_RIGHT -> activePage.quad.bottomRight
+                        DragHandle.BOTTOM_LEFT -> activePage.quad.bottomLeft
+                        DragHandle.EDGE_TOP -> NormalizedPoint(
+                            (activePage.quad.topLeft.x + activePage.quad.topRight.x) * 0.5f,
+                            (activePage.quad.topLeft.y + activePage.quad.topRight.y) * 0.5f,
+                        )
+                        DragHandle.EDGE_RIGHT -> NormalizedPoint(
+                            (activePage.quad.topRight.x + activePage.quad.bottomRight.x) * 0.5f,
+                            (activePage.quad.topRight.y + activePage.quad.bottomRight.y) * 0.5f,
+                        )
+                        DragHandle.EDGE_BOTTOM -> NormalizedPoint(
+                            (activePage.quad.bottomRight.x + activePage.quad.bottomLeft.x) * 0.5f,
+                            (activePage.quad.bottomRight.y + activePage.quad.bottomLeft.y) * 0.5f,
+                        )
+                        DragHandle.EDGE_LEFT -> NormalizedPoint(
+                            (activePage.quad.bottomLeft.x + activePage.quad.topLeft.x) * 0.5f,
+                            (activePage.quad.bottomLeft.y + activePage.quad.topLeft.y) * 0.5f,
+                        )
                     }
                     val align = if (normPt.x < 0.5f) Alignment.TopEnd else Alignment.TopStart
                     CornerLoupe(
@@ -283,8 +304,8 @@ private fun InteractiveQuadCanvas(
     quad: DocumentQuad,
     renderWidth: Float,
     renderHeight: Float,
-    draggingCorner: DragCorner?,
-    onDragStart: (DragCorner) -> Unit,
+    draggingHandle: DragHandle?,
+    onDragStart: (DragHandle) -> Unit,
     onDragEnd: () -> Unit,
     onQuadChange: (DocumentQuad) -> Unit,
 ) {
@@ -296,48 +317,72 @@ private fun InteractiveQuadCanvas(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(renderWidth, renderHeight) {
-                var activeCorner: DragCorner? = null
+                var activeHandle: DragHandle? = null
                 detectDragGestures(
                     onDragStart = { offset ->
-                        val corners = listOf(
-                            DragCorner.TOP_LEFT to Offset(currentQuad.topLeft.x * renderWidth, currentQuad.topLeft.y * renderHeight),
-                            DragCorner.TOP_RIGHT to Offset(currentQuad.topRight.x * renderWidth, currentQuad.topRight.y * renderHeight),
-                            DragCorner.BOTTOM_RIGHT to Offset(currentQuad.bottomRight.x * renderWidth, currentQuad.bottomRight.y * renderHeight),
-                            DragCorner.BOTTOM_LEFT to Offset(currentQuad.bottomLeft.x * renderWidth, currentQuad.bottomLeft.y * renderHeight),
+                        val tl = Offset(currentQuad.topLeft.x * renderWidth, currentQuad.topLeft.y * renderHeight)
+                        val tr = Offset(currentQuad.topRight.x * renderWidth, currentQuad.topRight.y * renderHeight)
+                        val br = Offset(currentQuad.bottomRight.x * renderWidth, currentQuad.bottomRight.y * renderHeight)
+                        val bl = Offset(currentQuad.bottomLeft.x * renderWidth, currentQuad.bottomLeft.y * renderHeight)
+                        val handles = listOf(
+                            DragHandle.TOP_LEFT to tl,
+                            DragHandle.TOP_RIGHT to tr,
+                            DragHandle.BOTTOM_RIGHT to br,
+                            DragHandle.BOTTOM_LEFT to bl,
+                            DragHandle.EDGE_TOP to Offset((tl.x + tr.x) * 0.5f, (tl.y + tr.y) * 0.5f),
+                            DragHandle.EDGE_RIGHT to Offset((tr.x + br.x) * 0.5f, (tr.y + br.y) * 0.5f),
+                            DragHandle.EDGE_BOTTOM to Offset((br.x + bl.x) * 0.5f, (br.y + bl.y) * 0.5f),
+                            DragHandle.EDGE_LEFT to Offset((bl.x + tl.x) * 0.5f, (bl.y + tl.y) * 0.5f),
                         )
-                        val nearest = corners.minByOrNull { (_, pos) ->
+                        val nearest = handles.minByOrNull { (_, pos) ->
                             hypot(pos.x - offset.x, pos.y - offset.y)
                         }
                         if (nearest != null && hypot(nearest.second.x - offset.x, nearest.second.y - offset.y) <= hitRadiusPx) {
-                            activeCorner = nearest.first
+                            activeHandle = nearest.first
                             onDragStart(nearest.first)
                         }
                     },
                     onDragEnd = {
-                        activeCorner = null
+                        activeHandle = null
                         onDragEnd()
                     },
                     onDragCancel = {
-                        activeCorner = null
+                        activeHandle = null
                         onDragEnd()
                     },
                     onDrag = { change, dragAmount ->
-                        val corner = activeCorner ?: return@detectDragGestures
+                        val handle = activeHandle ?: return@detectDragGestures
                         change.consume()
                         val dx = dragAmount.x / renderWidth
                         val dy = dragAmount.y / renderHeight
-                        val updated = when (corner) {
-                            DragCorner.TOP_LEFT -> currentQuad.copy(
+                        val updated = when (handle) {
+                            DragHandle.TOP_LEFT -> currentQuad.copy(
                                 topLeft = NormalizedPoint(currentQuad.topLeft.x + dx, currentQuad.topLeft.y + dy).coerced(),
                             )
-                            DragCorner.TOP_RIGHT -> currentQuad.copy(
+                            DragHandle.TOP_RIGHT -> currentQuad.copy(
                                 topRight = NormalizedPoint(currentQuad.topRight.x + dx, currentQuad.topRight.y + dy).coerced(),
                             )
-                            DragCorner.BOTTOM_RIGHT -> currentQuad.copy(
+                            DragHandle.BOTTOM_RIGHT -> currentQuad.copy(
                                 bottomRight = NormalizedPoint(currentQuad.bottomRight.x + dx, currentQuad.bottomRight.y + dy).coerced(),
                             )
-                            DragCorner.BOTTOM_LEFT -> currentQuad.copy(
+                            DragHandle.BOTTOM_LEFT -> currentQuad.copy(
                                 bottomLeft = NormalizedPoint(currentQuad.bottomLeft.x + dx, currentQuad.bottomLeft.y + dy).coerced(),
+                            )
+                            DragHandle.EDGE_TOP -> currentQuad.copy(
+                                topLeft = NormalizedPoint(currentQuad.topLeft.x + dx, currentQuad.topLeft.y + dy).coerced(),
+                                topRight = NormalizedPoint(currentQuad.topRight.x + dx, currentQuad.topRight.y + dy).coerced(),
+                            )
+                            DragHandle.EDGE_RIGHT -> currentQuad.copy(
+                                topRight = NormalizedPoint(currentQuad.topRight.x + dx, currentQuad.topRight.y + dy).coerced(),
+                                bottomRight = NormalizedPoint(currentQuad.bottomRight.x + dx, currentQuad.bottomRight.y + dy).coerced(),
+                            )
+                            DragHandle.EDGE_BOTTOM -> currentQuad.copy(
+                                bottomRight = NormalizedPoint(currentQuad.bottomRight.x + dx, currentQuad.bottomRight.y + dy).coerced(),
+                                bottomLeft = NormalizedPoint(currentQuad.bottomLeft.x + dx, currentQuad.bottomLeft.y + dy).coerced(),
+                            )
+                            DragHandle.EDGE_LEFT -> currentQuad.copy(
+                                bottomLeft = NormalizedPoint(currentQuad.bottomLeft.x + dx, currentQuad.bottomLeft.y + dy).coerced(),
+                                topLeft = NormalizedPoint(currentQuad.topLeft.x + dx, currentQuad.topLeft.y + dy).coerced(),
                             )
                         }
                         if (updated.isValidConvexQuad(minArea = 0.01f)) {
@@ -363,32 +408,69 @@ private fun InteractiveQuadCanvas(
             close()
         }
 
+        // 框外半透明暗色遮罩（EvenOdd 挖空选区）
+        val scrimPath = Path().apply {
+            fillType = PathFillType.EvenOdd
+            moveTo(0f, 0f)
+            lineTo(size.width, 0f)
+            lineTo(size.width, size.height)
+            lineTo(0f, size.height)
+            close()
+            moveTo(pts[0].x, pts[0].y)
+            lineTo(pts[1].x, pts[1].y)
+            lineTo(pts[2].x, pts[2].y)
+            lineTo(pts[3].x, pts[3].y)
+            close()
+        }
         drawPath(
-            path = quadPath,
-            color = Color(0xFF38BDF8).copy(alpha = 0.14f),
+            path = scrimPath,
+            color = Color.Black.copy(alpha = 0.45f),
         )
+
         drawPath(
             path = quadPath,
-            color = Color(0xFF38BDF8),
+            color = Color(0xFF22C55E),
             style = Stroke(width = 2.5.dp.toPx()),
         )
 
+        // 绘制 4 个角点
         val corners = listOf(
-            DragCorner.TOP_LEFT,
-            DragCorner.TOP_RIGHT,
-            DragCorner.BOTTOM_RIGHT,
-            DragCorner.BOTTOM_LEFT,
+            DragHandle.TOP_LEFT,
+            DragHandle.TOP_RIGHT,
+            DragHandle.BOTTOM_RIGHT,
+            DragHandle.BOTTOM_LEFT,
         )
         pts.forEachIndexed { index, pos ->
-            val isDragging = corners[index] == draggingCorner
+            val isDragging = corners[index] == draggingHandle
             drawCircle(
-                color = if (isDragging) Color(0xFF22C55E) else Color(0xFF38BDF8),
+                color = if (isDragging) Color(0xFF38BDF8) else Color(0xFF22C55E),
                 radius = if (isDragging) 14.dp.toPx() else 11.dp.toPx(),
                 center = pos,
             )
             drawCircle(
                 color = Color.White,
                 radius = 5.dp.toPx(),
+                center = pos,
+            )
+        }
+
+        // 绘制 4 条边中点控制手柄（支持单边平行微调）
+        val edgeHandles = listOf(
+            DragHandle.EDGE_TOP to Offset((pts[0].x + pts[1].x) * 0.5f, (pts[0].y + pts[1].y) * 0.5f),
+            DragHandle.EDGE_RIGHT to Offset((pts[1].x + pts[2].x) * 0.5f, (pts[1].y + pts[2].y) * 0.5f),
+            DragHandle.EDGE_BOTTOM to Offset((pts[2].x + pts[3].x) * 0.5f, (pts[2].y + pts[3].y) * 0.5f),
+            DragHandle.EDGE_LEFT to Offset((pts[3].x + pts[0].x) * 0.5f, (pts[3].y + pts[0].y) * 0.5f),
+        )
+        edgeHandles.forEach { (handle, pos) ->
+            val isDragging = handle == draggingHandle
+            drawCircle(
+                color = if (isDragging) Color(0xFF38BDF8) else Color.White,
+                radius = if (isDragging) 9.dp.toPx() else 6.5.dp.toPx(),
+                center = pos,
+            )
+            drawCircle(
+                color = Color(0xFF22C55E),
+                radius = 3.5.dp.toPx(),
                 center = pos,
             )
         }

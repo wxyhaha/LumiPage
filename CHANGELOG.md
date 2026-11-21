@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+### 2026-11-21 — 纸张自动摆正（0°/90°/180°/270° + 精细水平纠偏）与外缘暗边清理
+- **离线文字朝向自动识别 ([TextOrientationDetector.kt](file:///d:/studyPlace/LumiPage/core/imaging/src/main/kotlin/com/lumipage/core/imaging/TextOrientationDetector.kt), [ImagingEngine.kt](file:///d:/studyPlace/LumiPage/core/imaging/src/main/kotlin/com/lumipage/core/imaging/ImagingEngine.kt))**：
+  - 引入 `PP-LCNet_x1_0_doc_ori`（`doc_ori.tflite`，6.44 MB float32）基于 LiteRT 进行离线四向（`0°/90°/180°/270°`）文字朝向分类；在确认裁剪进入新扫描编辑页时自动执行，并同步旋转 `quad` 与 `rotationDegrees`，保留手动旋转按钮可随时覆盖调整。
+- **精细水平摆正与外缘非纸张暗边清理 ([PageDeskewer.kt](file:///d:/studyPlace/LumiPage/core/imaging/src/main/kotlin/com/lumipage/core/imaging/PageDeskewer.kt), [PerspectiveCorrector.kt](file:///d:/studyPlace/LumiPage/core/imaging/src/main/kotlin/com/lumipage/core/imaging/PerspectiveCorrector.kt))**：
+  - 在保持整张纸张完整、不裁切正常页边距的前提下，清理外缘 ~4.5% 环带内与边缘连通的桌面/书厚暗边，并用采样纸面底色羽化填充。
+  - 通过 `±6°` 水平投影方差最大化算法自动矫正轻微歪斜文字行，旋转边角采用干净纸面底色填充，杜绝黑三角。
+- **内侧安全边缘吸附 ([SegmentationDocumentDetector.kt](file:///d:/studyPlace/LumiPage/core/imaging/src/main/kotlin/com/lumipage/core/imaging/SegmentationDocumentDetector.kt))**：
+  - 在 `snapEdgesHighRes` 中加入内侧法向偏好与暗-到-亮极性权重，减少翻开书页厚度阴影或深色桌面边缘被吸附进裁剪框。
+- **编辑器自动触发 ([EditorViewModel.kt](file:///d:/studyPlace/LumiPage/feature/editor/src/main/kotlin/com/lumipage/feature/editor/EditorViewModel.kt), [MainActivity.kt](file:///d:/studyPlace/LumiPage/app/src/main/kotlin/com/lumipage/MainActivity.kt))**：
+  - 仅在 `EditorNewScan`（`autoOrientOnStart = true`）启动时自动摆正；重开已保存文档保持用户既有旋转状态。
+
+### 2026-11-21 — 商业级图像增强管线与 8 点暗遮罩裁剪升级
+- **图像增强质感升级 ([ImageEnhancer.kt](file:///d:/studyPlace/LumiPage/core/imaging/src/main/kotlin/com/lumipage/core/imaging/ImageEnhancer.kt))**：
+  - `AUTO_ENHANCE` 与 `GRAYSCALE` 新增局部背景差分去透字 + 非线性 S 曲线文字压黑；`AUTO_ENHANCE` 引入 HSV 饱和度选择性色彩保护（低饱和米黄/灰暗纸底去黄漂白为纯白，红章/荧光笔/彩色图文完整保留）。
+  - `BLACK_AND_WHITE` 升级为基于 `Imgproc.boxFilter` 局部均值与标准差的高速 **Sauvola 自适应二值化**，空白纸张零黑斑、文字笔画锐利。
+- **裁剪交互与精度修复 ([CropScreen.kt](file:///d:/studyPlace/LumiPage/feature/scanner/src/main/kotlin/com/lumipage/feature/scanner/CropScreen.kt), [ScannerViewModel.kt](file:///d:/studyPlace/LumiPage/feature/scanner/src/main/kotlin/com/lumipage/feature/scanner/ScannerViewModel.kt))**：
+  - 静态拍照图检测强制传入 `resetTemporal = true`，防止混入相机预览帧时序缓存。
+  - `CropScreen` 新增框外半透明暗色遮罩与 8 控制点（4 角点 + 4 边中点平行微调），并支持边中点局部放大镜。
+
 ### 2026-11-21 — 静止零闪动门控 + 多帧掩膜时序融合 + 高清边缘梯度吸附
 - **静止零闪动**：在 [ScannerViewModel.kt](file:///d:/studyPlace/LumiPage/feature/scanner/src/main/kotlin/com/lumipage/feature/scanner/ScannerViewModel.kt) 新增 64×64 帧间 `MAD` 静止检测与 [QuadStabilizer.kt](file:///d:/studyPlace/LumiPage/core/imaging/src/main/kotlin/com/lumipage/core/imaging/QuadStabilizer.kt) 静止门控，画面静止且锁定时彻底锁死边框；修复 [DocumentQuadOverlay.kt](file:///d:/studyPlace/LumiPage/feature/scanner/src/main/kotlin/com/lumipage/feature/scanner/DocumentQuadOverlay.kt) 丢锁时角点向左上角飞回的 Bug，改为保留原位置平滑淡出。
 - **贴合度精修**：在 [SegmentationDocumentDetector.kt](file:///d:/studyPlace/LumiPage/core/imaging/src/main/kotlin/com/lumipage/core/imaging/SegmentationDocumentDetector.kt) 新增 `256×256` 概率掩膜时序 EMA 融合与 `720p` 局部法向梯度边缘吸附（`snapEdgesHighRes`），实拍书本与桌面样本均进一步精准吸附至真实物理边界。
