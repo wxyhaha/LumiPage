@@ -38,6 +38,8 @@ class ScannerViewModel(
 
     private val stabilizer = QuadStabilizer()
     private val isAnalyzingFrame = AtomicBoolean(false)
+    private var prevThumbLuma: IntArray? = null
+    private val thumbPixels = IntArray(MOTION_GRID * MOTION_GRID)
 
     sealed interface ScannerEvent {
         data class CompletedScan(val pages: List<ScannedDraftPage>) : ScannerEvent
@@ -79,14 +81,18 @@ class ScannerViewModel(
 
         viewModelScope.launch {
             try {
+                val mad = computeFrameMad(frameBitmap)
+                val isSceneStatic = mad in 0f..STATIC_MAD_THRESHOLD
+                val resetTemporal = mad > LARGE_MOTION_MAD_THRESHOLD
+
                 val t0 = System.currentTimeMillis()
-                val result = imagingEngine.detectDocument(frameBitmap)
+                val result = imagingEngine.detectDocument(frameBitmap, resetTemporal = resetTemporal)
                 val dt = System.currentTimeMillis() - t0
                 android.util.Log.i(
                     "LumiScan",
-                    "frame=${frameBitmap.width}x${frameBitmap.height} preview=${previewWidth}x${previewHeight} conf=${result.confidence} quad=${result.quad != null} ${dt}ms",
+                    "frame=${frameBitmap.width}x${frameBitmap.height} mad=${"%.2f".format(mad)} static=$isSceneStatic conf=${result.confidence} quad=${result.quad != null} ${dt}ms",
                 )
-                val stabilizerState = stabilizer.update(result.quad)
+                val stabilizerState = stabilizer.update(result.quad, isSceneStatic = isSceneStatic)
                 val mappedQuad = stabilizerState.displayQuad?.let { quad ->
                     QuadCoordinateMapper.mapAnalysisQuadToPreview(
                         quad = quad,
@@ -206,6 +212,7 @@ class ScannerViewModel(
 
     fun backToCamera() {
         stabilizer.reset()
+        prevThumbLuma = null
         _uiState.update { state ->
             if (!state.isBatchMode) {
                 // 单页模式下从裁剪页返回相机即视为重拍，清理上一张未保存的临时草稿
@@ -339,6 +346,31 @@ class ScannerViewModel(
         )
     }
 
+    private fun computeFrameMad(bitmap: Bitmap): Float {
+        val tiny = Bitmap.createScaledBitmap(bitmap, MOTION_GRID, MOTION_GRID, false)
+        try {
+            tiny.getPixels(thumbPixels, 0, MOTION_GRID, 0, 0, MOTION_GRID, MOTION_GRID)
+        } finally {
+            if (tiny !== bitmap && !tiny.isRecycled) tiny.recycle()
+        }
+        val curr = IntArray(MOTION_GRID * MOTION_GRID)
+        for (i in curr.indices) {
+            val c = thumbPixels[i]
+            val r = (c ushr 16) and 0xFF
+            val g = (c ushr 8) and 0xFF
+            val b = c and 0xFF
+            curr[i] = (r * 77 + g * 150 + b * 29) ushr 8
+        }
+        val prev = prevThumbLuma
+        prevThumbLuma = curr
+        if (prev == null) return LARGE_MOTION_MAD_THRESHOLD + 1f
+        var diffSum = 0L
+        for (i in curr.indices) {
+            diffSum += kotlin.math.abs(curr[i] - prev[i])
+        }
+        return diffSum.toFloat() / curr.size.toFloat()
+    }
+
     class Factory(
         private val imagingEngine: ImagingEngine,
         private val dispatchers: DispatcherProvider,
@@ -348,5 +380,11 @@ class ScannerViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             return ScannerViewModel(imagingEngine, dispatchers, draftDir) as T
         }
+    }
+
+    private companion object {
+        const val MOTION_GRID = 64
+        const val STATIC_MAD_THRESHOLD = 3.5f
+        const val LARGE_MOTION_MAD_THRESHOLD = 12.0f
     }
 }

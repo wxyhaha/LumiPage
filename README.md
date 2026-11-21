@@ -10,9 +10,9 @@
 
 ### 1. 文档扫描 (`:feature:scanner`)
 - **标准 `3:4` 专业取景框**：基于 CameraX `UseCaseGroup + ViewPort` 实现预览、分析与拍照视野 1:1 对齐。
-- **端侧双引擎边缘检测**：
-  - 主引擎：**DocAligner `FastViT-SA24` ONNX**（`onnxruntime-android`，Letterbox 等比缩放 + 5×5 高锐度热力图角点定位）
-  - 兜底引擎：**OpenCV 霍夫直线相交 + 多通路边缘轮廓评分**（应对翻开书本、手指压角等复杂场景）
+- **端侧语义分割 + 直线拟合定位**：
+  - 主引擎：**FairScan DeepLabV3+ (LiteRT `2.3.2`, 4.92MB)** 语义分割 + **凸包窄带过滤 + Huber 四边直线拟合求交点**（精准应对翻开书本、手指压角、浅色桌面等复杂场景）
+  - 稳定性控制：**`SEARCHING → LOCKED` 滞回状态机 + 死区防抖 + 60fps 阻尼插值**，消除边框闪动
 - **交互式四顶点精调裁剪**：支持四顶点拖拽、角落局部放大镜（Loupe）、一键自动识别 / 全图、90° 旋转、相册多选导入与连续多页扫描队列。
 
 ### 2. 非破坏性图像增强 (`:feature:editor`)
@@ -35,7 +35,7 @@
 ## 技术栈与模块结构
 
 - **语言与 UI**：Kotlin `2.1.20`、Jetpack Compose (Material 3)、Navigation、Coil 3
-- **视觉与推理**：OpenCV `4.14.0`、ONNX Runtime Android `1.31.1` (`FastViT-SA24`)、CameraX `1.5.0`
+- **视觉与推理**：OpenCV `4.14.0`、Google LiteRT `2.3.2` (`fairscan-segmentation-model.tflite`)、CameraX `1.5.0`
 - **存储与 PDF**：Room `2.7.1` (KSP)、`pdfbox-android:2.0.27.0` + Android `PdfRenderer`
 - **构建环境**：JDK 17、AGP `8.9.1`、Gradle `8.14.3`、`minSdk = 24`、`compileSdk / targetSdk = 35`（支持 16 KB ELF 对齐）
 

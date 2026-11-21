@@ -29,7 +29,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.opencv)
-    implementation(libs.onnxruntime.android)
+    implementation(libs.litert)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

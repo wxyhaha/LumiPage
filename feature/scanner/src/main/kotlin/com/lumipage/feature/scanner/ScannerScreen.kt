@@ -313,7 +313,7 @@ private fun CameraScannerScreen(
                                             .build()
                                             .also { imageAnalysis ->
                                                 imageAnalysis.setAnalyzer(analysisExecutor) { imageProxy ->
-                                                    val bmp = imageProxy.toAnalysisBitmap(maxSide = 480)
+                                                    val bmp = imageProxy.toAnalysisBitmap(maxSide = 720)
                                                     imageProxy.close()
                                                     if (bmp != null && previewWidth > 0 && previewHeight > 0) {
                                                         viewModel.onFrameAnalyzed(bmp, previewWidth, previewHeight)

@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+### 2026-11-21 — 静止零闪动门控 + 多帧掩膜时序融合 + 高清边缘梯度吸附
+- **静止零闪动**：在 [ScannerViewModel.kt](file:///d:/studyPlace/LumiPage/feature/scanner/src/main/kotlin/com/lumipage/feature/scanner/ScannerViewModel.kt) 新增 64×64 帧间 `MAD` 静止检测与 [QuadStabilizer.kt](file:///d:/studyPlace/LumiPage/core/imaging/src/main/kotlin/com/lumipage/core/imaging/QuadStabilizer.kt) 静止门控，画面静止且锁定时彻底锁死边框；修复 [DocumentQuadOverlay.kt](file:///d:/studyPlace/LumiPage/feature/scanner/src/main/kotlin/com/lumipage/feature/scanner/DocumentQuadOverlay.kt) 丢锁时角点向左上角飞回的 Bug，改为保留原位置平滑淡出。
+- **贴合度精修**：在 [SegmentationDocumentDetector.kt](file:///d:/studyPlace/LumiPage/core/imaging/src/main/kotlin/com/lumipage/core/imaging/SegmentationDocumentDetector.kt) 新增 `256×256` 概率掩膜时序 EMA 融合与 `720p` 局部法向梯度边缘吸附（`snapEdgesHighRes`），实拍书本与桌面样本均进一步精准吸附至真实物理边界。
+
+### 2026-11-21 — 方案 A+B 重构：FairScan 语义分割 + 滞回锁定防抖追踪
+- **方案 B（语义分割 + 凸包 Huber 直线拟合）**：
+  - 引入 Google LiteRT (`com.google.ai.edge.litert:2.3.2`) 与 `fairscan-segmentation-model.tflite`（4.92MB, DeepLabV3+ MobileNetV2），替代 83.1MB `FastViT-SA24` ONNX 模型。
+  - 新增 [SegmentationDocumentDetector.kt](file:///d:/studyPlace/LumiPage/core/imaging/src/main/kotlin/com/lumipage/core/imaging/SegmentationDocumentDetector.kt)：从分割 Mask 提取凸包窄带边缘点（天然过滤手指压角凹陷）并通过 `DIST_HUBER` 鲁棒拟合四边直线求交点，在翻开书本、手指压角及浅色桌面实拍样本上实现精准贴合。
+- **方案 A（彻底消除闪动）**：
+  - 取消实时检测双引擎互抢；在 [QuadStabilizer.kt](file:///d:/studyPlace/LumiPage/core/imaging/src/main/kotlin/com/lumipage/core/imaging/QuadStabilizer.kt) 实现 `SEARCHING → LOCKED` 滞回状态机（3 帧锁定、容忍 12 帧短暂模糊、1.2% 死区防抖、4 帧跳变确认）。
+  - 在 [DocumentQuadOverlay.kt](file:///d:/studyPlace/LumiPage/feature/scanner/src/main/kotlin/com/lumipage/feature/scanner/DocumentQuadOverlay.kt) 加入 Compose 60fps 阻尼弹簧插值动画。
+
 ### 2026-11-20 — 修复扫描草稿状态残留、返回手势与旋转裁剪坐标同步问题
 - **修复退出扫描再进入仍显示上一张未保存图片的 Bug**：
   - 根因：`MainActivity` 原本将所有 `viewModel(key = ...)` 挂载在同一个 Activity 级 `ViewModelStore` 下且 `key` 仅依赖 `backStack.size`；退出扫描再进入时 `key` 相同导致直接复用上一次未销毁的 `ScannerViewModel` 实例。

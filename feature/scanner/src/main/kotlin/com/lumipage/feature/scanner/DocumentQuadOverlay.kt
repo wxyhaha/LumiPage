@@ -1,8 +1,17 @@
 package com.lumipage.feature.scanner
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateOffsetAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -19,6 +28,44 @@ fun DocumentQuadOverlay(
     showGrid: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    // 保留上次有效四边形，避免丢锁时角点向 Offset.Zero 飞回产生闪动
+    var lastValidQuad by remember { mutableStateOf(quad) }
+    if (quad != null) {
+        lastValidQuad = quad
+    }
+
+    val overlayAlpha by animateFloatAsState(
+        targetValue = if (quad != null) 1f else 0f,
+        animationSpec = tween(durationMillis = 180),
+        label = "quadAlpha",
+    )
+
+    val active = quad ?: lastValidQuad
+    val animSpec = spring<Offset>(
+        dampingRatio = Spring.DampingRatioNoBouncy,
+        stiffness = Spring.StiffnessMediumLow,
+    )
+    val tl by animateOffsetAsState(
+        targetValue = active?.topLeft?.let { Offset(it.x, it.y) } ?: Offset(0.1f, 0.1f),
+        animationSpec = animSpec,
+        label = "tl",
+    )
+    val tr by animateOffsetAsState(
+        targetValue = active?.topRight?.let { Offset(it.x, it.y) } ?: Offset(0.9f, 0.1f),
+        animationSpec = animSpec,
+        label = "tr",
+    )
+    val br by animateOffsetAsState(
+        targetValue = active?.bottomRight?.let { Offset(it.x, it.y) } ?: Offset(0.9f, 0.9f),
+        animationSpec = animSpec,
+        label = "br",
+    )
+    val bl by animateOffsetAsState(
+        targetValue = active?.bottomLeft?.let { Offset(it.x, it.y) } ?: Offset(0.1f, 0.9f),
+        animationSpec = animSpec,
+        label = "bl",
+    )
+
     Canvas(modifier = modifier.fillMaxSize()) {
         if (showGrid) {
             val gridColor = Color.White.copy(alpha = 0.22f)
@@ -31,12 +78,12 @@ fun DocumentQuadOverlay(
             }
         }
 
-        if (quad != null) {
+        if (active != null && overlayAlpha > 0.01f) {
             val pts = listOf(
-                Offset(quad.topLeft.x * size.width, quad.topLeft.y * size.height),
-                Offset(quad.topRight.x * size.width, quad.topRight.y * size.height),
-                Offset(quad.bottomRight.x * size.width, quad.bottomRight.y * size.height),
-                Offset(quad.bottomLeft.x * size.width, quad.bottomLeft.y * size.height),
+                Offset(tl.x * size.width, tl.y * size.height),
+                Offset(tr.x * size.width, tr.y * size.height),
+                Offset(br.x * size.width, br.y * size.height),
+                Offset(bl.x * size.width, bl.y * size.height),
             )
 
             val path = Path().apply {
@@ -47,11 +94,11 @@ fun DocumentQuadOverlay(
                 close()
             }
 
-            val borderColor = Color(0xFF22C55E)
+            val borderColor = Color(0xFF22C55E).copy(alpha = overlayAlpha)
 
             drawPath(
                 path = path,
-                color = borderColor.copy(alpha = 0.14f),
+                color = borderColor.copy(alpha = 0.14f * overlayAlpha),
             )
             drawPath(
                 path = path,
@@ -70,7 +117,7 @@ fun DocumentQuadOverlay(
                     center = corner,
                 )
                 drawCircle(
-                    color = Color.White,
+                    color = Color.White.copy(alpha = overlayAlpha),
                     radius = 3.5.dp.toPx(),
                     center = corner,
                 )

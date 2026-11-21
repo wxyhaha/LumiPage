@@ -21,29 +21,33 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * 双引擎融合文档四顶点检测器：
- * 1. 优先使用端侧深度学习模型（FastViT-T8 ONNX）进行高精度角点热力图定位；
- * 2. 在深度学习置信度不足的场景（如翻开书本双页相连、手指压角等），自动回退至霍夫直线相交 + 多通路轮廓检测。
+ * 文档四顶点检测器：
+ * - 在具备 Android Context 时，统一由 FairScan DeepLabV3+ (LiteRT) 语义分割 + 凸包 Huber 直线拟合执行，
+ *   避免双引擎互相抢框导致的闪烁；
+ * - 无 Context 时回退至纯 OpenCV 霍夫直线相交 + 多通路轮廓检测。
  */
 class DocumentDetector(
     context: android.content.Context? = null,
 ) {
-    private val onnxDetector: OnnxDocumentDetector? = context?.let { OnnxDocumentDetector(it) }
+    private val segDetector: SegmentationDocumentDetector? = context?.let { SegmentationDocumentDetector(it) }
 
     data class DetectionResult(
         val quad: DocumentQuad?,
         val confidence: Float,
     )
 
-    fun detect(bitmap: Bitmap): DetectionResult {
+    fun detect(
+        bitmap: Bitmap,
+        resetTemporal: Boolean = false,
+    ): DetectionResult {
         if (bitmap.width < 16 || bitmap.height < 16) {
             return DetectionResult(quad = null, confidence = 0f)
         }
 
-        // 1. 优先执行 FastViT-SA24 深度学习角点定位
-        onnxDetector?.detect(bitmap)?.let { mlResult ->
-            android.util.Log.i("LumiScan", "Engine=ONNX_FastViT_SA24 conf=${mlResult.confidence}")
-            return mlResult
+        if (segDetector != null) {
+            val result = segDetector.detect(bitmap, resetTemporal = resetTemporal)
+            android.util.Log.i("LumiScan", "Engine=FairScan_LiteRT conf=${result.confidence} quad=${result.quad != null}")
+            return result
         }
 
         if (!OpenCvInitializer.ensureInitialized()) {

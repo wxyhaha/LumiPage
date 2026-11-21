@@ -17,9 +17,12 @@ class ImagingEngine(
     private val perspectiveCorrector: PerspectiveCorrector = PerspectiveCorrector(),
     private val imageEnhancer: ImageEnhancer = ImageEnhancer(),
 ) {
-    suspend fun detectDocument(bitmap: Bitmap): DocumentDetector.DetectionResult =
+    suspend fun detectDocument(
+        bitmap: Bitmap,
+        resetTemporal: Boolean = false,
+    ): DocumentDetector.DetectionResult =
         withContext(dispatchers.default) {
-            detector.detect(bitmap)
+            detector.detect(bitmap, resetTemporal = resetTemporal)
         }
 
     suspend fun renderPage(

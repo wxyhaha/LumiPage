@@ -46,6 +46,7 @@
 | 2026-11-20 | Phase 6 | 真机实拍书本样本诊断 + 霍夫直线相交方案验证 | 通过（`real_2` 与 `dark_wood` 精准框出） | 实测翻开书本双页相连+手指压边角场景下，霍夫直线相交重建四顶点精准锁定书页；`real_1` 因上边缘超出画面外未构成闭合四边 |
 | 2026-11-20 | Phase 6 | DocAligner `FastViT-T8` vs `FastViT-SA24` ONNX 模型评测 | `FastViT-SA24` 全面胜出 | `SA24` 在翻开书本 `real_2` 样本上 4 角点峰值达 `[0.767, 0.845, 0.789, 0.413]` 并精准锁定右页书；`dark_wood`/`light_desk` 达 `0.90+`（PC CPU ~45ms） |
 | 2026-11-20 | Phase 6 | 16 KB ELF 页面对齐校验（OpenCV 4.14.0 + CameraX 1.5.0） | 通过（7/7 `.so` = `16384`） | APK 内全部 `arm64-v8a` 原生库均为 16 KB 对齐且 `compress=0` |
+| 2026-11-21 | Phase 6 | FairScan LiteRT 分割模型 + 凸包 Huber 直线拟合验证 | 通过（4/4 样本全精准贴合） | 在翻开左/右页书本+手指压角 (`real_1`, `real_2`) 与桌面样本 (`dark_wood`, `light_desk`) 上均精准穿透手指还原真实书角 |
 
 ---
 
